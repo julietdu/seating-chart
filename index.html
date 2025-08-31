@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>座位表生成器</title>
+    <title>進階座位表生成器</title>
     <style>
         :root {
             --primary-color: #8e44ad;
@@ -14,7 +14,10 @@
             --text-color: #333;
             --border-color: #e0e0e0;
             --accent-color: #00bcd4;
-            --grid-cols: 6; /* Default column count */
+            --blue: #4a90e2;
+            --green: #50e3c2;
+            --purple: #bd10e0;
+            --grid-cols: 6;
         }
 
         body {
@@ -39,18 +42,22 @@
         header h1 { margin: 0; font-size: 2.5em; }
         header h2 { margin: 5px 0 20px; color: #555; font-weight: normal; }
 
+        .toolbar { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
         .toolbar button {
             background-color: #fff;
-            color: var(--primary-color);
-            border: 1px solid var(--primary-color);
+            color: #333;
+            border: 1px solid #ccc;
             padding: 10px 15px;
-            margin: 0 5px;
             border-radius: 8px;
             cursor: pointer;
             transition: all 0.3s ease;
+            font-size: 1em;
         }
-        .toolbar button:hover { background-color: var(--light-purple); border-color: var(--secondary-color); }
-        .toolbar button#export-btn { background-color: var(--secondary-color); color: white; border: none; }
+        .toolbar button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .toolbar button:disabled { opacity: 0.5; cursor: not-allowed; }
+        #save-btn { background-color: #e8f5e9; color: #388e3c; border-color: #a5d6a7; }
+        #import-btn { background-color: #e3f2fd; color: #1976d2; border-color: #90caf9; }
+        #export-btn { background-color: #f3e5f5; color: #8e44ad; border-color: #ce93d8; }
 
         .main-content { display: flex; gap: 20px; }
         .seating-chart-container { flex: 3; background-color: var(--card-bg); padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
@@ -75,12 +82,12 @@
         .form-group button, .card button { width: 100%; padding: 10px; border-radius: 8px; cursor: pointer; transition: background-color 0.3s; border: none; color: white; margin-top: 5px; }
         
         #add-student-btn { background-color: #26a69a; }
-        #batch-add-btn { background-color: #78909c; }
         #update-grid-btn { background-color: var(--secondary-color); }
         #update-teacher-desk-btn { background-color: var(--accent-color); }
+        #update-header-btn { background-color: #ff7043; }
 
         #seat-counter { font-weight: bold; color: var(--primary-color); margin: 10px 0; }
-        #student-list { max-height: 300px; overflow-y: auto; }
+        #student-list { max-height: 250px; overflow-y: auto; }
 
         .student-item { display: flex; justify-content: space-between; align-items: center; background-color: #f9f9f9; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 8px; cursor: grab; }
         .student-item.dragging { opacity: 0.5; background: #c8ebf0; }
@@ -89,21 +96,44 @@
         .student-item .student-nickname { font-size: 0.9em; color: #777; }
         .student-item .delete-student { cursor: pointer; color: #e57373; font-size: 1.2em; font-weight: bold; }
 
+        /* Modal Styles */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 100; display: none; justify-content: center; align-items: center; }
+        .modal-content { background: white; padding: 30px; border-radius: 15px; width: 90%; max-width: 400px; text-align: center; box-shadow: 0 5px 25px rgba(0,0,0,0.2); }
+        .modal-content h3 { margin-top: 0; font-size: 1.5em; }
+        .modal-content button { display: block; width: 100%; padding: 15px; margin-bottom: 15px; border-radius: 10px; border: none; color: white; font-size: 1.1em; cursor: pointer; transition: transform 0.2s; }
+        .modal-content button:hover { transform: scale(1.03); }
+        #export-csv-btn { background: var(--blue); }
+        #export-html-btn { background: var(--green); color: #333; }
+        #export-print-btn { background: var(--purple); }
+        .modal-cancel-btn { background: #f0f0f0; color: #333; margin-top: 10px; }
+
         @media (max-width: 992px) {
             .main-content { flex-direction: column; }
             .sidebar { flex: none; width: 100%; }
+        }
+        
+        @media print {
+            body { padding: 0; background-color: #fff; }
+            .container { box-shadow: none; border-radius: 0; padding: 10px; background: none; }
+            .toolbar, .seating-controls, .sidebar, .modal-overlay, #teacher-desk { display: none !important; }
+            header h1, header h2 { color: #000; }
+            #seating-chart { gap: 5px; }
+            .seat { min-height: 70px; border: 1px solid #000; }
+            .seat.occupied { background-color: #eee !important; }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>XXX 學校</h1>
-            <h2>5D班 學生座位表</h2>
+            <h1 id="school-name-display">學校名稱</h1>
+            <h2 id="class-name-display">班級名稱 學生座位表</h2>
             <div class="toolbar">
+                <button id="undo-btn">↩️ 撤銷 (Undo)</button>
+                <button id="redo-btn">↪️ 重做 (Redo)</button>
                 <button id="save-btn">💾 儲存資料</button>
-                <button id="load-btn">📂 載入資料</button>
-                <button id="export-btn">📋 匯出表格</button>
+                <button id="import-btn">📂 匯入資料</button>
+                <button id="export-btn">📊 匯出座位表</button>
             </div>
         </header>
 
@@ -118,6 +148,17 @@
             </div>
 
             <div class="sidebar">
+                <div class="card">
+                    <h3>標題設定</h3>
+                    <div class="form-group">
+                        <label for="school-name-input">學校名稱</label>
+                        <input type="text" id="school-name-input">
+                        <label for="class-name-input">班級名稱</label>
+                        <input type="text" id="class-name-input">
+                        <button id="update-header-btn">🔄 更新標題</button>
+                    </div>
+                </div>
+
                 <div class="card">
                     <h3>學生名單</h3>
                     <div class="form-group">
@@ -157,34 +198,109 @@
         </div>
     </div>
 
+    <!-- Export Modal -->
+    <div id="export-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h3>📊 匯出座位表</h3>
+            <button id="export-csv-btn">匯出為 CSV 檔案</button>
+            <button id="export-html-btn">匯出為 HTML 檔案</button>
+            <button id="export-print-btn">🖨️ 產生列印版本</button>
+            <button id="modal-cancel-btn" class="modal-cancel-btn">取消</button>
+        </div>
+    </div>
+    
+    <input type="file" id="import-file-input" accept=".json" style="display: none;">
+
     <script>
     document.addEventListener('DOMContentLoaded', () => {
-        let state = {};
+        const getEl = (id) => document.getElementById(id);
+
+        // State and History
+        let history = [];
+        let historyIndex = -1;
+        
         const initialState = {
-            students: [
-                { id: 1, name: '王小明', nickname: 'Tommy' },
-                { id: 2, name: '李美麗', nickname: 'Beauty' },
-                { id: 3, name: '張偉強', nickname: 'Cyrus' }
-            ],
+            students: [],
             seatAssignments: {},
-            nextStudentId: 4,
+            nextStudentId: 1,
             rows: 4,
             cols: 6,
-            teacherDesk: { name: '教師桌', position: 'top' }
+            teacherDesk: { name: '教師桌', position: 'top' },
+            schoolName: '學校名稱',
+            className: '班級名稱'
         };
 
-        const getEl = (id) => document.getElementById(id);
-        const studentList = getEl('student-list'), seatingChart = getEl('seating-chart'), addStudentBtn = getEl('add-student-btn');
-        const studentNameInput = getEl('student-name-input'), studentNicknameInput = getEl('student-nickname-input');
+        // DOM Elements
+        const studentList = getEl('student-list'), seatingChart = getEl('seating-chart');
+        const addStudentBtn = getEl('add-student-btn'), studentNameInput = getEl('student-name-input'), studentNicknameInput = getEl('student-nickname-input');
         const updateGridBtn = getEl('update-grid-btn'), rowsInput = getEl('rows-input'), colsInput = getEl('cols-input');
         const seatCounter = getEl('seat-counter'), randomizeBtn = getEl('randomize-btn'), clearSeatsBtn = getEl('clear-seats-btn');
         const teacherDesk = getEl('teacher-desk'), updateTeacherDeskBtn = getEl('update-teacher-desk-btn');
         const teacherDeskNameInput = getEl('teacher-desk-name'), teacherDeskPosSelect = getEl('teacher-desk-position');
-        const saveBtn = getEl('save-btn'), loadBtn = getEl('load-btn');
+        const schoolNameDisplay = getEl('school-name-display'), classNameDisplay = getEl('class-name-display');
+        const schoolNameInput = getEl('school-name-input'), classNameInput = getEl('class-name-input'), updateHeaderBtn = getEl('update-header-btn');
+        const undoBtn = getEl('undo-btn'), redoBtn = getEl('redo-btn'), saveBtn = getEl('save-btn'), importBtn = getEl('import-btn'), exportBtn = getEl('export-btn');
+        const importFileInput = getEl('import-file-input');
+        const exportModal = getEl('export-modal'), modalCancelBtn = getEl('modal-cancel-btn');
+        const exportCsvBtn = getEl('export-csv-btn'), exportHtmlBtn = getEl('export-html-btn'), exportPrintBtn = getEl('export-print-btn');
 
         let draggedStudentId = null;
 
-        function renderStudents() {
+        // --- State Management (Undo/Redo) ---
+        function pushState(newState) {
+            history = history.slice(0, historyIndex + 1);
+            history.push(JSON.parse(JSON.stringify(newState)));
+            historyIndex++;
+            updateUndoRedoButtons();
+        }
+
+        function getCurrentState() {
+            return history[historyIndex];
+        }
+
+        function undo() {
+            if (historyIndex > 0) {
+                historyIndex--;
+                loadState(history[historyIndex]);
+                updateUndoRedoButtons();
+            }
+        }
+
+        function redo() {
+            if (historyIndex < history.length - 1) {
+                historyIndex++;
+                loadState(history[historyIndex]);
+                updateUndoRedoButtons();
+            }
+        }
+        
+        function updateUndoRedoButtons() {
+            undoBtn.disabled = historyIndex <= 0;
+            redoBtn.disabled = historyIndex >= history.length - 1;
+        }
+
+        function performAction(action) {
+            const newState = JSON.parse(JSON.stringify(getCurrentState()));
+            action(newState);
+            pushState(newState);
+            loadState(newState);
+        }
+
+        // --- Rendering Functions ---
+        function renderAll(state) {
+            renderSeats(state);
+            renderStudents(state);
+            renderTeacherDesk(state);
+            renderHeader(state);
+            updateSeatCounter(state);
+        }
+        
+        function loadState(state) {
+            syncInputsToState(state);
+            renderAll(state);
+        }
+
+        function renderStudents(state) {
             studentList.innerHTML = '';
             const unassignedStudents = state.students.filter(s => !Object.values(state.seatAssignments).includes(s.id));
             unassignedStudents.forEach(student => {
@@ -195,10 +311,9 @@
                 studentEl.innerHTML = `<div class="student-info"><span class="student-name">${student.name}</span><span class="student-nickname">${student.nickname}</span></div><span class="delete-student" data-student-id="${student.id}">×</span>`;
                 studentList.appendChild(studentEl);
             });
-            updateSeatCounter();
         }
 
-        function renderSeats() {
+        function renderSeats(state) {
             seatingChart.innerHTML = '';
             seatingChart.style.setProperty('--grid-cols', state.cols);
             for (let i = 0; i < state.rows * state.cols; i++) {
@@ -215,159 +330,223 @@
                         seatEl.draggable = true;
                         seatEl.dataset.studentId = student.id;
                     }
-                } else {
-                    seatEl.textContent = '空位';
                 }
                 seatingChart.appendChild(seatEl);
             }
-            updateSeatCounter();
         }
 
-        function renderTeacherDesk() {
+        function renderTeacherDesk(state) {
             teacherDesk.textContent = state.teacherDesk.name;
             const container = seatingChart.parentNode;
             if (state.teacherDesk.position === 'top') container.insertBefore(teacherDesk, seatingChart);
             else container.appendChild(teacherDesk);
         }
 
-        function updateSeatCounter() {
+        function renderHeader(state) {
+            schoolNameDisplay.textContent = state.schoolName;
+            classNameDisplay.textContent = `${state.className} 學生座位表`;
+        }
+
+        function updateSeatCounter(state) {
             seatCounter.textContent = `已安排座位: ${Object.keys(state.seatAssignments).length} / ${state.students.length} 人`;
         }
         
-        function handleAddStudent() {
+        function syncInputsToState(state) {
+            rowsInput.value = state.rows;
+            colsInput.value = state.cols;
+            teacherDeskNameInput.value = state.teacherDesk.name;
+            teacherDeskPosSelect.value = state.teacherDesk.position;
+            schoolNameInput.value = state.schoolName;
+            classNameInput.value = state.className;
+        }
+
+        // --- Action Handlers ---
+        addStudentBtn.addEventListener('click', () => {
             const name = studentNameInput.value.trim();
             const nickname = studentNicknameInput.value.trim();
             if (name) {
-                state.students.push({ id: state.nextStudentId++, name, nickname });
+                performAction(state => {
+                    state.students.push({ id: state.nextStudentId++, name, nickname });
+                });
                 studentNameInput.value = '';
                 studentNicknameInput.value = '';
-                renderAll();
             }
-        }
+        });
 
-        function handleDeleteStudent(studentId) {
-            state.students = state.students.filter(s => s.id !== studentId);
-            Object.entries(state.seatAssignments).forEach(([seatId, sId]) => {
-                if (sId === studentId) delete state.seatAssignments[seatId];
-            });
-            renderAll();
-        }
+        document.body.addEventListener('click', e => {
+            if (e.target.classList.contains('delete-student')) {
+                const studentId = parseInt(e.target.dataset.studentId);
+                performAction(state => {
+                    state.students = state.students.filter(s => s.id !== studentId);
+                    Object.entries(state.seatAssignments).forEach(([seatId, sId]) => {
+                        if (sId === studentId) delete state.seatAssignments[seatId];
+                    });
+                });
+            }
+        });
 
-        function handleUpdateGrid() {
+        updateGridBtn.addEventListener('click', () => performAction(state => {
             state.rows = parseInt(rowsInput.value) || state.rows;
             state.cols = parseInt(colsInput.value) || state.cols;
             const newTotalSeats = state.rows * state.cols;
             Object.keys(state.seatAssignments).forEach(seatId => {
                 if (parseInt(seatId.split('-')[1]) >= newTotalSeats) delete state.seatAssignments[seatId];
             });
-            renderAll();
-        }
-
-        function handleUpdateTeacherDesk() {
+        }));
+        
+        updateTeacherDeskBtn.addEventListener('click', () => performAction(state => {
             state.teacherDesk.name = teacherDeskNameInput.value;
             state.teacherDesk.position = teacherDeskPosSelect.value;
-            renderTeacherDesk();
-        }
+        }));
 
-        function handleRandomize() {
+        updateHeaderBtn.addEventListener('click', () => performAction(state => {
+            state.schoolName = schoolNameInput.value || state.schoolName;
+            state.className = classNameInput.value || state.className;
+        }));
+
+        randomizeBtn.addEventListener('click', () => performAction(state => {
             state.seatAssignments = {};
             const shuffledStudents = [...state.students].sort(() => 0.5 - Math.random());
             const totalSeats = state.rows * state.cols;
             shuffledStudents.slice(0, totalSeats).forEach((student, i) => {
                 state.seatAssignments[`seat-${i}`] = student.id;
             });
-            renderAll();
-        }
+        }));
 
-        function handleClearSeats() {
+        clearSeatsBtn.addEventListener('click', () => performAction(state => {
             state.seatAssignments = {};
-            renderAll();
-        }
+        }));
 
-        function handleDragStart(e) {
+        // --- Drag and Drop ---
+        document.body.addEventListener('dragstart', e => {
             if (e.target.matches('.student-item, .occupied')) {
                 draggedStudentId = parseInt(e.target.dataset.studentId);
                 e.target.classList.add('dragging');
             } else {
                 e.preventDefault();
             }
-        }
-
-        function handleDrop(e) {
+        });
+        document.body.addEventListener('dragend', e => e.target.classList.remove('dragging'));
+        seatingChart.addEventListener('dragover', e => e.preventDefault());
+        seatingChart.addEventListener('dragenter', e => { if (e.target.matches('.seat:not(.occupied)')) e.target.classList.add('over'); });
+        seatingChart.addEventListener('dragleave', e => { if (e.target.classList.contains('seat')) e.target.classList.remove('over'); });
+        seatingChart.addEventListener('drop', e => {
             e.preventDefault();
             const targetSeat = e.target.closest('.seat');
             if (!targetSeat || !draggedStudentId) return;
             targetSeat.classList.remove('over');
             const targetSeatId = targetSeat.dataset.seatId;
+            const state = getCurrentState();
             if (state.seatAssignments[targetSeatId]) return;
-            let sourceSeatId = Object.keys(state.seatAssignments).find(sid => state.seatAssignments[sid] === draggedStudentId);
-            if (sourceSeatId) delete state.seatAssignments[sourceSeatId];
-            state.seatAssignments[targetSeatId] = draggedStudentId;
-            renderAll();
-        }
+            
+            performAction(newState => {
+                let sourceSeatId = Object.keys(newState.seatAssignments).find(sid => newState.seatAssignments[sid] === draggedStudentId);
+                if (sourceSeatId) delete newState.seatAssignments[sourceSeatId];
+                newState.seatAssignments[targetSeatId] = draggedStudentId;
+            });
+        });
 
-        function saveState() {
-            try {
-                localStorage.setItem('seatingChartState_v2', JSON.stringify(state));
-                alert('資料已儲存至您的瀏覽器!');
-            } catch (e) {
-                console.error("Error saving state to localStorage", e);
-                alert('儲存失敗，您的瀏覽器可能不支援或已滿。');
-            }
-        }
+        // --- Toolbar Buttons ---
+        undoBtn.addEventListener('click', undo);
+        redoBtn.addEventListener('click', redo);
+        saveBtn.addEventListener('click', () => {
+            const state = getCurrentState();
+            const dataStr = JSON.stringify(state, null, 2);
+            const blob = new Blob([dataStr], {type: "application/json"});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `seating_plan_${state.className}_${new Date().toISOString().slice(0,10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
 
-        function loadState() {
-            try {
-                const savedState = localStorage.getItem('seatingChartState_v2');
-                if (savedState) {
-                    state = JSON.parse(savedState);
-                } else {
-                    state = JSON.parse(JSON.stringify(initialState)); // Deep copy
+        importBtn.addEventListener('click', () => importFileInput.click());
+        importFileInput.addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const importedState = JSON.parse(event.target.result);
+                    // Basic validation
+                    if (importedState && importedState.students && importedState.seatAssignments) {
+                        pushState(importedState);
+                        loadState(importedState);
+                    } else {
+                        alert('檔案格式不正確!');
+                    }
+                } catch (err) {
+                    alert('讀取檔案失敗，請確認檔案為正確的 JSON 格式。');
                 }
-            } catch (e) {
-                console.error("Error loading state from localStorage", e);
-                state = JSON.parse(JSON.stringify(initialState)); // Deep copy on error
-            }
-            syncInputsToState();
-            renderAll();
-        }
-
-        function syncInputsToState() {
-            rowsInput.value = state.rows;
-            colsInput.value = state.cols;
-            teacherDeskNameInput.value = state.teacherDesk.name;
-            teacherDeskPosSelect.value = state.teacherDesk.position;
-        }
-
-        function renderAll() {
-            renderSeats();
-            renderStudents();
-            renderTeacherDesk();
-        }
-
-        addStudentBtn.addEventListener('click', handleAddStudent);
-        updateGridBtn.addEventListener('click', handleUpdateGrid);
-        randomizeBtn.addEventListener('click', handleRandomize);
-        clearSeatsBtn.addEventListener('click', handleClearSeats);
-        updateTeacherDeskBtn.addEventListener('click', handleUpdateTeacherDesk);
-        saveBtn.addEventListener('click', saveState);
-        loadBtn.addEventListener('click', () => {
-            if(confirm('這將會載入上次儲存的資料，並覆蓋目前的變更。確定要載入嗎？')) {
-                loadState();
-            }
+            };
+            reader.readAsText(file);
+            e.target.value = ''; // Reset input
         });
 
-        document.body.addEventListener('click', e => {
-            if (e.target.classList.contains('delete-student')) handleDeleteStudent(parseInt(e.target.dataset.studentId));
-        });
-        document.body.addEventListener('dragstart', handleDragStart);
-        document.body.addEventListener('dragend', e => e.target.classList.remove('dragging'));
-        seatingChart.addEventListener('dragover', e => e.preventDefault());
-        seatingChart.addEventListener('dragenter', e => { if (e.target.classList.contains('seat') && !e.target.classList.contains('occupied')) e.target.classList.add('over'); });
-        seatingChart.addEventListener('dragleave', e => { if (e.target.classList.contains('seat')) e.target.classList.remove('over'); });
-        seatingChart.addEventListener('drop', handleDrop);
+        // --- Export Modal ---
+        exportBtn.addEventListener('click', () => exportModal.style.display = 'flex');
+        modalCancelBtn.addEventListener('click', () => exportModal.style.display = 'none');
+        exportModal.addEventListener('click', e => { if(e.target === exportModal) exportModal.style.display = 'none'; });
 
-        loadState(); // Initial load
+        function downloadFile(content, fileName, contentType) {
+            const blob = new Blob([content], { type: contentType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        exportCsvBtn.addEventListener('click', () => {
+            const state = getCurrentState();
+            let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; // \uFEFF for BOM
+            csvContent += "座位編號,中文姓名,English Nickname\n";
+            for (let i = 0; i < state.rows * state.cols; i++) {
+                const seatId = `seat-${i}`;
+                const studentId = state.seatAssignments[seatId];
+                if (studentId) {
+                    const student = state.students.find(s => s.id === studentId);
+                    csvContent += `${i + 1},${student.name},${student.nickname || ''}\n`;
+                } else {
+                    csvContent += `${i + 1},空位,\n`;
+                }
+            }
+            downloadFile(csvContent, `seating_plan_${state.className}.csv`, 'text/csv;charset=utf-8;');
+        });
+
+        exportHtmlBtn.addEventListener('click', () => {
+            const state = getCurrentState();
+            const chartHtml = getEl('seating-chart').innerHTML;
+            const teacherDeskHtml = `<div style="background-color: #b0bec5; color: white; padding: 15px; text-align: center; border-radius: 8px; margin: 0 auto 20px auto; font-weight: bold;">${state.teacherDesk.name}</div>`;
+            const finalHtml = `
+                <!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"><title>${state.schoolName} - ${state.className} 座位表</title>
+                <style>
+                    body { font-family: sans-serif; margin: 20px; }
+                    h1, h2 { text-align: center; }
+                    #seating-chart { display: grid; grid-template-columns: repeat(${state.cols}, 1fr); gap: 15px; border: 1px solid #ccc; padding: 10px; }
+                    .seat { border: 2px solid #ccc; border-radius: 8px; min-height: 80px; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 5px; text-align: center; }
+                    .seat.occupied { background-color: #f3e5f5; }
+                    .student-name { font-weight: bold; } .student-nickname { color: #666; }
+                </style></head><body>
+                <h1>${state.schoolName}</h1><h2>${state.className} 學生座位表</h2>
+                ${state.teacherDesk.position === 'top' ? teacherDeskHtml : ''}
+                <div id="seating-chart">${chartHtml}</div>
+                ${state.teacherDesk.position === 'bottom' ? teacherDeskHtml : ''}
+                </body></html>`;
+            downloadFile(finalHtml, `seating_plan_${state.className}.html`, 'text/html');
+        });
+
+        exportPrintBtn.addEventListener('click', () => {
+            window.print();
+        });
+
+        // --- Initial Load ---
+        pushState(initialState);
+        loadState(initialState);
     });
     </script>
 </body>
